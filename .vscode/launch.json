@@ -1,0 +1,19 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      // Celular conectado por USB, en la misma red WiFi que la computadora.
+      // Si cambia la IP de la computadora (ipconfig), actualízala aquí.
+      "name": "Celular físico",
+      "request": "launch",
+      "type": "dart",
+      "args": ["--dart-define=API_BASE_URL=http://192.168.0.3:4000/api/v1"]
+    },
+    {
+      // El emulador Android usa 10.0.2.2 automáticamente (ver lib/core/config/api_config.dart).
+      "name": "Emulador / Chrome",
+      "request": "launch",
+      "type": "dart"
+    }
+  ]
+}
