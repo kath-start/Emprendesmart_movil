@@ -8,6 +8,7 @@ import '../../models/business.dart';
 import 'business_provider.dart';
 import 'create_business_screen.dart';
 import 'widgets/business_logo.dart';
+import 'widgets/business_logo_picker.dart';
 
 Color _statusColor(String status) => switch (status) {
   'ACTIVE' => const Color(0xFF16A34A),
@@ -41,6 +42,37 @@ class _BusinessesScreenState extends State<BusinessesScreen> {
   }
 
   void _createBusiness() => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CreateBusinessScreen()));
+
+  void _switchTo(Business business) {
+    context.read<BusinessProvider>().selectBusiness(business);
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text('Ahora trabajas con ${business.name}')));
+    Navigator.of(context).pop();
+  }
+
+  void _edit(Business business) =>
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => CreateBusinessScreen(existingBusiness: business)));
+
+  /// Acciones de un negocio: cambiar a él, editarlo o cambiar su logo.
+  Future<void> _openActions(Business business, {required bool isCurrent}) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      useRootNavigator: true,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      builder: (sheetContext) => _BusinessActionsSheet(business: business, isCurrent: isCurrent),
+    );
+    if (!mounted) return;
+    switch (action) {
+      case 'switch':
+        _switchTo(business);
+      case 'edit':
+        _edit(business);
+      case 'logo':
+        await changeBusinessLogo(context, business);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -142,10 +174,8 @@ class _BusinessesScreenState extends State<BusinessesScreen> {
                     _BusinessCard(
                       business: business,
                       isCurrent: business.id == currentId,
-                      onTap: () {
-                        context.read<BusinessProvider>().selectBusiness(business);
-                        Navigator.of(context).pop();
-                      },
+                      onTap: () => _openActions(business, isCurrent: business.id == currentId),
+                      onChangeLogo: business.isOwner ? () => changeBusinessLogo(context, business) : null,
                     ),
                   // Con pocos negocios, la pantalla invita a crear otro.
                   if (query.isEmpty && businessProvider.businesses.length <= 1)
@@ -183,7 +213,10 @@ class _BusinessCard extends StatelessWidget {
   final bool isCurrent;
   final VoidCallback onTap;
 
-  const _BusinessCard({required this.business, required this.isCurrent, required this.onTap});
+  /// Solo el dueño: la cámara sobre el logo lo cambia directo.
+  final VoidCallback? onChangeLogo;
+
+  const _BusinessCard({required this.business, required this.isCurrent, required this.onTap, this.onChangeLogo});
 
   @override
   Widget build(BuildContext context) {
@@ -208,15 +241,7 @@ class _BusinessCard extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                Container(
-                  width: 64,
-                  height: 64,
-                  decoration: const BoxDecoration(color: Color(0xFFE6EFFE), shape: BoxShape.circle),
-                  child: BusinessLogo(
-                    logoUrl: business.logoUrl,
-                    fallback: const Icon(Icons.storefront_rounded, color: AppTheme.primary, size: 32),
-                  ),
-                ),
+                _LogoAvatar(business: business, size: 64, onChangeLogo: onChangeLogo),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(
@@ -268,7 +293,236 @@ class _BusinessCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 4),
+                const Icon(Icons.more_vert_rounded, color: AppTheme.textSecondary),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Logo redondo del negocio; con [onChangeLogo], una cámara encima para cambiarlo.
+class _LogoAvatar extends StatelessWidget {
+  final Business business;
+  final double size;
+  final VoidCallback? onChangeLogo;
+
+  const _LogoAvatar({required this.business, required this.size, this.onChangeLogo});
+
+  @override
+  Widget build(BuildContext context) {
+    final avatar = Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: const Color(0xFFE6EFFE),
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 2),
+        boxShadow: [BoxShadow(color: AppTheme.navy.withValues(alpha: 0.08), blurRadius: 8, offset: const Offset(0, 3))],
+      ),
+      child: BusinessLogo(
+        logoUrl: business.logoUrl,
+        fallback: Icon(Icons.storefront_rounded, color: AppTheme.primary, size: size * 0.5),
+      ),
+    );
+    if (onChangeLogo == null) return avatar;
+    return SizedBox(
+      width: size + 4,
+      height: size + 4,
+      child: Stack(
+        children: [
+          avatar,
+          Positioned(
+            right: 0,
+            bottom: 0,
+            child: Material(
+              color: AppTheme.primary,
+              shape: const CircleBorder(side: BorderSide(color: Colors.white, width: 2)),
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: onChangeLogo,
+                child: Padding(
+                  padding: EdgeInsets.all(size * 0.08),
+                  child: Icon(Icons.photo_camera_rounded, color: Colors.white, size: size * 0.24),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Hoja con lo que se puede hacer con un negocio. Devuelve 'switch', 'edit' o 'logo'.
+class _BusinessActionsSheet extends StatelessWidget {
+  final Business business;
+  final bool isCurrent;
+
+  const _BusinessActionsSheet({required this.business, required this.isCurrent});
+
+  @override
+  Widget build(BuildContext context) {
+    final category = business.category.isEmpty
+        ? ''
+        : business.category[0].toUpperCase() + business.category.substring(1);
+    void pick(String action) => Navigator.of(context).pop(action);
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                _LogoAvatar(business: business, size: 60),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              business.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                                color: AppTheme.textPrimary,
+                              ),
+                            ),
+                          ),
+                          if (isCurrent) ...[
+                            const SizedBox(width: 8),
+                            const _Tag(label: 'Actual', color: AppTheme.primary),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        [if (category.isNotEmpty) category, Labels.businessStage(business.stage)].join(' · '),
+                        style: const TextStyle(color: AppTheme.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            if (!isCurrent)
+              _ActionTile(
+                icon: Icons.swap_horiz_rounded,
+                color: AppTheme.primary,
+                title: 'Cambiar a este negocio',
+                subtitle: 'Verás sus ventas, productos y alertas',
+                onTap: () => pick('switch'),
+                highlighted: true,
+              ),
+            if (business.isOwner) ...[
+              _ActionTile(
+                icon: Icons.edit_rounded,
+                color: const Color(0xFF7C3AED),
+                title: 'Editar negocio',
+                subtitle: 'Nombre, categoría, etapa y estado',
+                onTap: () => pick('edit'),
+              ),
+              _ActionTile(
+                icon: Icons.add_photo_alternate_outlined,
+                color: const Color(0xFF0EA5E9),
+                title: business.logoUrl == null ? 'Agregar logo' : 'Cambiar logo',
+                subtitle: 'Toma una foto o elígela de tu galería',
+                onTap: () => pick('logo'),
+              ),
+            ] else
+              Container(
+                margin: const EdgeInsets.only(top: 4),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(color: const Color(0xFFF1F5FB), borderRadius: BorderRadius.circular(16)),
+                child: Row(
+                  children: [
+                    const Icon(Icons.lock_outline_rounded, color: AppTheme.textSecondary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Eres ${business.role.label.toLowerCase()} de este negocio. '
+                        'Solo ${business.ownerName ?? 'el dueño'} puede editarlo o cambiar su logo.',
+                        style: const TextStyle(color: AppTheme.textSecondary, height: 1.35),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ActionTile extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+  final bool highlighted;
+
+  const _ActionTile({
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    this.highlighted = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
+        color: highlighted ? const Color(0xFFE6EFFE) : const Color(0xFFF6F8FC),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: highlighted ? const BorderSide(color: AppTheme.primary, width: 1.2) : BorderSide.none,
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(icon, color: color, size: 26),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppTheme.textPrimary),
+                      ),
+                      Text(subtitle, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+                    ],
+                  ),
+                ),
                 const Icon(Icons.chevron_right_rounded, color: AppTheme.textSecondary),
               ],
             ),

@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart' show DateUtils;
+
 class Entrepreneur {
   final String id;
   final String firstName;
@@ -9,6 +11,9 @@ class Entrepreneur {
   final String plan;
   final String status;
 
+  /// Hasta cuándo está pagado el plan; null si no vence (Gratis o asignado por el equipo).
+  final DateTime? planExpiresAt;
+
   Entrepreneur({
     required this.id,
     required this.firstName,
@@ -19,9 +24,20 @@ class Entrepreneur {
     this.city,
     required this.plan,
     required this.status,
+    this.planExpiresAt,
   });
 
   String get fullName => '$firstName $lastName';
+
+  bool get isFreePlan => plan == 'FREE';
+
+  /// Días que faltan para que venza el plan (negativo si ya venció); null si no vence.
+  int? get planDaysLeft {
+    final expires = planExpiresAt;
+    if (expires == null) return null;
+    final today = DateUtils.dateOnly(DateTime.now());
+    return DateUtils.dateOnly(expires.toLocal()).difference(today).inDays;
+  }
 
   factory Entrepreneur.fromJson(Map<String, dynamic> json) {
     return Entrepreneur(
@@ -34,6 +50,7 @@ class Entrepreneur {
       city: json['city'] as String?,
       plan: json['plan'] as String,
       status: json['status'] as String,
+      planExpiresAt: json['planExpiresAt'] == null ? null : DateTime.parse(json['planExpiresAt'] as String),
     );
   }
 }

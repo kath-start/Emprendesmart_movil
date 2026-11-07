@@ -177,7 +177,9 @@ class _CreateBusinessScreenState extends State<CreateBusinessScreen> {
                                 icon: const Icon(Icons.keyboard_arrow_down_rounded, color: AppTheme.primary),
                                 decoration: _decoration(prefix: _StatusDot(color: _statusColor(_status))),
                                 items: _statuses
-                                    .map((status) => DropdownMenuItem(value: status, child: Text(Labels.status(status))))
+                                    .map(
+                                      (status) => DropdownMenuItem(value: status, child: Text(Labels.status(status))),
+                                    )
                                     .toList(),
                                 onChanged: (value) => setState(() => _status = value ?? _statuses.first),
                               ),
@@ -236,9 +238,7 @@ InputDecoration _decoration({IconData? icon, Widget? prefix, String? hint}) {
     filled: true,
     fillColor: _fieldFill,
     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-    prefixIcon: leading == null
-        ? null
-        : Padding(padding: const EdgeInsets.only(left: 14, right: 10), child: leading),
+    prefixIcon: leading == null ? null : Padding(padding: const EdgeInsets.only(left: 14, right: 10), child: leading),
     prefixIconConstraints: const BoxConstraints(minWidth: 52, minHeight: 24),
     prefixIconColor: AppTheme.textSecondary,
     border: border(AppTheme.border),
@@ -587,6 +587,10 @@ class _StatusDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(width: 18, height: 18, decoration: BoxDecoration(color: color, shape: BoxShape.circle));
+    return Container(
+      width: 18,
+      height: 18,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    );
   }
 }

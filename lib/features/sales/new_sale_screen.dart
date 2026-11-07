@@ -5,16 +5,23 @@ import 'package:provider/provider.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/notifications/notification_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/money.dart';
+import '../../core/widgets/confirm_dialog.dart';
 import '../../models/product.dart';
+import '../../models/yape_payment.dart';
 import '../products/product_provider.dart';
 import '../products/widgets/product_widgets.dart';
 import '../scanner/barcode_scanner_screen.dart';
+import '../yape/yape_provider.dart';
 import 'sale_provider.dart';
 
 class NewSaleScreen extends StatefulWidget {
   final String businessId;
 
-  const NewSaleScreen({super.key, required this.businessId});
+  /// Cobro de Yape al que se le asignan los productos; al registrar la venta queda conciliado.
+  final YapePayment? yapePayment;
+
+  const NewSaleScreen({super.key, required this.businessId, this.yapePayment});
 
   @override
   State<NewSaleScreen> createState() => _NewSaleScreenState();
@@ -25,14 +32,35 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
   bool _isSubmitting = false;
   String? _errorMessage;
 
+  /// Cómo pagó el cliente. Un cobro de Yape/Plin ya trae su método.
+  late String _paymentMethod = widget.yapePayment?.method ?? 'efectivo';
+
+  /// Productos que suman exactamente el monto del Yape (se marcan solos al abrir).
+  String? _suggestionLabel;
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       final productProvider = context.read<ProductProvider>();
       if (productProvider.products.isEmpty) {
-        productProvider.loadProducts(widget.businessId);
+        await productProvider.loadProducts(widget.businessId);
       }
+      if (mounted) _applyYapeSuggestion(productProvider.products);
+    });
+  }
+
+  void _applyYapeSuggestion(List<Product> products) {
+    final amount = widget.yapePayment?.amount;
+    if (amount == null) return;
+    final suggestion = suggestProductsForAmount(amount, products);
+    if (suggestion == null) return;
+    final byId = {for (final p in products) p.id: p};
+    setState(() {
+      _quantities
+        ..clear()
+        ..addAll(suggestion);
+      _suggestionLabel = suggestion.entries.map((e) => '${byId[e.key]!.name} ×${e.value}').join(' + ');
     });
   }
 
@@ -87,13 +115,39 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
         .toList();
     if (items.isEmpty) return;
 
+    final payment = widget.yapePayment;
+    final total = _totalFor(context.read<ProductProvider>().products);
+    if (payment?.amount != null && _cents(total) != _cents(payment!.amount!)) {
+      final confirmed = await showConfirmDialog(
+        context,
+        title: 'El total no coincide',
+        message:
+            'El ${payment.methodLabel} fue por ${formatMoney(payment.amount!)} y la venta suma ${formatMoney(total)}. '
+            '¿Registrar la venta de todas formas?',
+        icon: Icons.payments_outlined,
+        destructive: false,
+        confirmLabel: 'Registrar',
+      );
+      if (confirmed != true || !mounted) return;
+    }
+
     setState(() {
       _isSubmitting = true;
       _errorMessage = null;
     });
 
     try {
-      final alerts = await context.read<SaleProvider>().createSale(widget.businessId, items: items);
+      final yapeProvider = context.read<YapeProvider>();
+      final result = await context.read<SaleProvider>().createSale(
+        widget.businessId,
+        items: items,
+        notes: payment?.saleNote,
+        paymentMethod: _paymentMethod,
+      );
+      final alerts = result.alerts;
+      if (payment != null) {
+        await yapeProvider.markLinked(payment.id, saleId: result.sale.id, businessId: widget.businessId);
+      }
       if (!mounted) return;
       await context.read<ProductProvider>().loadProducts(widget.businessId);
       if (!mounted) return;
@@ -148,21 +202,25 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
                           onPressed: () => Navigator.of(context).pop(),
                         ),
                         const SizedBox(width: 8),
-                        const Expanded(
+                        Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Nueva venta',
-                                style: TextStyle(
+                                widget.yapePayment == null
+                                    ? 'Nueva venta'
+                                    : 'Asignar cobro ${widget.yapePayment!.methodLabel}',
+                                style: const TextStyle(
                                   fontSize: 24,
                                   fontWeight: FontWeight.w800,
                                   color: AppTheme.textPrimary,
                                 ),
                               ),
                               Text(
-                                'Selecciona productos y registra tu venta',
-                                style: TextStyle(color: AppTheme.textSecondary),
+                                widget.yapePayment == null
+                                    ? 'Selecciona productos y registra tu venta'
+                                    : '¿Qué productos te pagaron?',
+                                style: const TextStyle(color: AppTheme.textSecondary),
                               ),
                             ],
                           ),
@@ -181,6 +239,12 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
                         : ListView(
                             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                             children: [
+                              if (widget.yapePayment != null)
+                                _YapeBanner(
+                                  payment: widget.yapePayment!,
+                                  total: _totalFor(products),
+                                  suggestion: _suggestionLabel,
+                                ),
                               for (final product in products)
                                 _SaleProductCard(
                                   product: product,
@@ -199,6 +263,11 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
                       padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
                       child: Text(_errorMessage!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
                     ),
+                  if (widget.yapePayment == null)
+                    _PaymentMethodPicker(
+                      selected: _paymentMethod,
+                      onChanged: _isSubmitting ? null : (method) => setState(() => _paymentMethod = method),
+                    ),
                   _TotalBar(
                     total: _totalFor(products),
                     units: units,
@@ -210,6 +279,229 @@ class _NewSaleScreenState extends State<NewSaleScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+int _cents(double value) => (value * 100).round();
+
+/// Métodos de pago que puede elegir el emprendedor al registrar una venta.
+const paymentMethods = <({String id, String label, IconData icon})>[
+  (id: 'efectivo', label: 'Efectivo', icon: Icons.payments_outlined),
+  (id: 'yape', label: 'Yape', icon: Icons.qr_code_2_rounded),
+  (id: 'plin', label: 'Plin', icon: Icons.phone_android_rounded),
+];
+
+/// Fila "¿Cómo pagó?" con Efectivo / Yape / Plin.
+class _PaymentMethodPicker extends StatelessWidget {
+  final String selected;
+  final ValueChanged<String>? onChanged;
+
+  const _PaymentMethodPicker({required this.selected, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(left: 4, bottom: 6),
+            child: Text(
+              '¿Cómo pagó el cliente?',
+              style: TextStyle(color: AppTheme.textSecondary, fontWeight: FontWeight.w600),
+            ),
+          ),
+          Row(
+            children: [
+              for (final method in paymentMethods) ...[
+                if (method != paymentMethods.first) const SizedBox(width: 8),
+                Expanded(
+                  child: _PaymentMethodChip(
+                    label: method.label,
+                    icon: method.icon,
+                    selected: method.id == selected,
+                    onTap: onChanged == null ? null : () => onChanged!(method.id),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PaymentMethodChip extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  const _PaymentMethodChip({required this.label, required this.icon, required this.selected, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = selected ? AppTheme.primary : AppTheme.textSecondary;
+    return Material(
+      color: selected ? AppTheme.primary.withValues(alpha: 0.10) : Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: selected ? AppTheme.primary : AppTheme.border, width: selected ? 1.6 : 1),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: color, size: 22),
+              const SizedBox(height: 2),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: color, fontSize: 12.5, fontWeight: FontWeight.w700),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Busca productos con stock que sumen exactamente [amount]: un producto (1 o varias
+/// unidades) o dos productos distintos. Devuelve `productId → cantidad`, o null si nada cuadra.
+Map<String, int>? suggestProductsForAmount(double amount, List<Product> products) {
+  final target = _cents(amount);
+  if (target <= 0) return null;
+  final available = products.where((p) => p.stock > 0 && _cents(p.price) > 0).toList();
+
+  for (final p in available) {
+    if (_cents(p.price) == target) return {p.id: 1};
+  }
+  for (final p in available) {
+    final price = _cents(p.price);
+    final units = target ~/ price;
+    if (target % price == 0 && units <= p.stock && units <= 20) return {p.id: units};
+  }
+  for (var i = 0; i < available.length; i++) {
+    for (var j = i + 1; j < available.length; j++) {
+      if (_cents(available[i].price) + _cents(available[j].price) == target) {
+        return {available[i].id: 1, available[j].id: 1};
+      }
+    }
+  }
+  return null;
+}
+
+/// Cabecera morada con el cobro de Yape y cuánto falta para que la venta cuadre.
+class _YapeBanner extends StatelessWidget {
+  static const yapePurple = Color(0xFF742284);
+  static const plinTeal = Color(0xFF00A19B);
+
+  final YapePayment payment;
+  final double total;
+  final String? suggestion;
+
+  const _YapeBanner({required this.payment, required this.total, this.suggestion});
+
+  @override
+  Widget build(BuildContext context) {
+    final amount = payment.amount;
+    final brand = payment.isPlin ? plinTeal : yapePurple;
+    final method = payment.methodLabel;
+    final (IconData icon, Color color, String text) = switch (amount) {
+      null => (Icons.info_outline_rounded, AppTheme.textSecondary, 'No se pudo leer el monto del $method.'),
+      _ when total == 0 => (Icons.touch_app_outlined, AppTheme.textSecondary, 'Elige los productos que te pagaron.'),
+      final a when _cents(total) == _cents(a) => (
+        Icons.check_circle_rounded,
+        const Color(0xFF16A34A),
+        'El total coincide con el $method',
+      ),
+      final a when total < a => (
+        Icons.error_outline_rounded,
+        const Color(0xFFD97706),
+        'Faltan ${formatMoney(a - total)} para cuadrar',
+      ),
+      final a => (
+        Icons.error_outline_rounded,
+        const Color(0xFFDC2626),
+        'Supera al $method por ${formatMoney(total - a)}',
+      ),
+    };
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: brand.withValues(alpha: 0.35), width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(color: brand, borderRadius: BorderRadius.circular(14)),
+                child: Text(
+                  payment.isPlin ? 'P' : 'Y',
+                  style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      payment.displaySender,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppTheme.textPrimary),
+                    ),
+                    Text('te pagó con $method', style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+                  ],
+                ),
+              ),
+              Text(
+                amount == null ? '—' : formatMoney(amount),
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: brand),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Icon(icon, size: 18, color: color),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  text,
+                  style: TextStyle(color: color, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+          if (suggestion != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Sugerido por el monto: $suggestion',
+              style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+            ),
+          ],
+        ],
       ),
     );
   }

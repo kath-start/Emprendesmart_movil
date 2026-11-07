@@ -38,10 +38,15 @@ class SaleService {
     return Sale.fromJson(response['data'] as Map<String, dynamic>);
   }
 
-  Future<CreateSaleResult> create(String businessId, {required List<Map<String, dynamic>> items, String? notes}) async {
+  Future<CreateSaleResult> create(
+    String businessId, {
+    required List<Map<String, dynamic>> items,
+    String? notes,
+    String? paymentMethod,
+  }) async {
     final response = await _apiClient.post(
       '/app/businesses/$businessId/sales',
-      data: {'items': items, 'notes': ?notes},
+      data: {'items': items, 'notes': ?notes, 'paymentMethod': ?paymentMethod},
     );
     final data = response['data'] as Map<String, dynamic>;
     final rawAlerts = data['alerts'] as List<dynamic>? ?? [];

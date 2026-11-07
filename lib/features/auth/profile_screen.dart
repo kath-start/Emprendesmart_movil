@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/network/api_exception.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/countries.dart';
 import '../../core/utils/labels.dart';
-import '../../models/business.dart';
 import '../businesses/business_provider.dart';
 import '../businesses/widgets/business_logo.dart';
+import '../businesses/widgets/business_logo_picker.dart';
 import '../plans/plans_screen.dart';
 import 'auth_provider.dart';
+import 'profile_edit_screens.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -161,89 +162,11 @@ class ProfileScreen extends StatelessWidget {
     }
   }
 
-  /// La foto del perfil es el logo del negocio actual; solo el dueño puede cambiarla.
-  Future<void> _changeLogo(BuildContext context, Business business) async {
-    final action = await showModalBottomSheet<String>(
-      context: context,
-      // El perfil vive dentro de la pestaña "Más": sin esto la hoja queda detrás de la barra inferior.
-      useRootNavigator: true,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-              child: Text(
-                'Logo de ${business.name}',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppTheme.textPrimary),
-              ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_camera_outlined),
-              title: const Text('Tomar foto'),
-              onTap: () => Navigator.of(sheetContext).pop('camera'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library_outlined),
-              title: const Text('Elegir de la galería'),
-              onTap: () => Navigator.of(sheetContext).pop('gallery'),
-            ),
-            if (business.logoUrl != null)
-              ListTile(
-                leading: const Icon(Icons.delete_outline, color: Color(0xFFDC2626)),
-                title: const Text('Quitar logo', style: TextStyle(color: Color(0xFFDC2626))),
-                onTap: () => Navigator.of(sheetContext).pop('remove'),
-              ),
-          ],
-        ),
-      ),
-    );
-    if (action == null || !context.mounted) return;
-
-    final provider = context.read<BusinessProvider>();
-    final messenger = ScaffoldMessenger.of(context);
-    void show(String message) => messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
-
-    try {
-      if (action == 'remove') {
-        await provider.removeLogo(business.id);
-        show('Se quitó el logo');
-        return;
-      }
-      final source = action == 'camera' ? ImageSource.camera : ImageSource.gallery;
-      final XFile? file;
-      try {
-        file = await ImagePicker().pickImage(source: source, maxWidth: 800, maxHeight: 800, imageQuality: 85);
-      } catch (_) {
-        show(source == ImageSource.camera ? 'No se pudo abrir la cámara.' : 'No se pudo abrir la galería.');
-        return;
-      }
-      if (file == null) return;
-      final name = file.name.toLowerCase();
-      final contentType = name.endsWith('.png')
-          ? 'image/png'
-          : name.endsWith('.webp')
-          ? 'image/webp'
-          : 'image/jpeg';
-      show('Subiendo logo…');
-      await provider.uploadLogo(business.id, await file.readAsBytes(), contentType: contentType);
-      show('Logo de ${business.name} actualizado');
-    } on ApiException catch (e) {
-      show(e.message);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final entrepreneur = context.watch<AuthProvider>().entrepreneur;
     final business = context.watch<BusinessProvider>().currentBusiness;
-    // Editar datos y foto aún no existe en la API: se avisa en vez de dejar botones que no responden.
-    void comingSoon(String message) => ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
+    void open(Widget screen) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light,
@@ -266,64 +189,70 @@ class ProfileScreen extends StatelessWidget {
                             email: entrepreneur.email,
                             status: entrepreneur.status,
                             logoUrl: business?.logoUrl,
-                            onChangePhoto: (business?.isOwner ?? false) ? () => _changeLogo(context, business!) : null,
+                            onChangePhoto: (business?.isOwner ?? false)
+                                ? () => changeBusinessLogo(context, business!)
+                                : null,
                           ),
-                          const SizedBox(height: 24),
+                          const SizedBox(height: 22),
                           _InfoCard(
                             children: [
                               _InfoTile(
                                 icon: Icons.person_outline_rounded,
-                                color: AppTheme.primary,
+                                color: const Color(0xFF1A6FF0),
                                 label: 'Nombre',
-                                onTap: () => comingSoon('Pronto podrás editar este dato'),
+                                onTap: () => open(EditNameScreen(entrepreneur: entrepreneur)),
                                 value: entrepreneur.fullName,
                               ),
                               _InfoTile(
                                 icon: Icons.mail_outline_rounded,
                                 color: const Color(0xFF7C3AED),
                                 label: 'Email',
-                                onTap: () => comingSoon('Pronto podrás editar este dato'),
+                                onTap: () => open(ChangeEmailScreen(entrepreneur: entrepreneur)),
                                 value: entrepreneur.email,
                               ),
-                              if (entrepreneur.phone != null)
-                                _InfoTile(
-                                  icon: Icons.phone_outlined,
-                                  color: const Color(0xFF0EA5E9),
-                                  label: 'Teléfono',
-                                  onTap: () => comingSoon('Pronto podrás editar este dato'),
-                                  value: entrepreneur.phone!,
-                                ),
-                              if (entrepreneur.country != null)
-                                _InfoTile(
-                                  icon: Icons.public_rounded,
-                                  color: const Color(0xFF14B8A6),
-                                  label: 'País',
-                                  onTap: () => comingSoon('Pronto podrás editar este dato'),
-                                  value: entrepreneur.country!,
-                                ),
-                              if (entrepreneur.city != null)
-                                _InfoTile(
-                                  icon: Icons.location_on_outlined,
-                                  color: const Color(0xFFEC4899),
-                                  label: 'Ciudad',
-                                  onTap: () => comingSoon('Pronto podrás editar este dato'),
-                                  value: entrepreneur.city!,
-                                ),
+                              // Los datos opcionales vacíos se muestran como "Agregar" para poder completarlos.
                               _InfoTile(
-                                icon: Icons.credit_card_rounded,
-                                color: const Color(0xFF10B981),
-                                label: 'Plan',
-                                onTap: () =>
-                                    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PlansScreen())),
-                                value: Labels.plan(entrepreneur.plan),
+                                icon: Icons.phone_outlined,
+                                color: const Color(0xFF0891B2),
+                                label: 'Teléfono',
+                                onTap: () => open(EditPhoneScreen(entrepreneur: entrepreneur)),
+                                value: entrepreneur.phone ?? 'Agregar teléfono',
+                                isEmpty: entrepreneur.phone == null,
                               ),
                               _InfoTile(
-                                icon: Icons.verified_user_outlined,
-                                color: const Color(0xFFF59E0B),
+                                icon: Icons.location_on_outlined,
+                                color: const Color(0xFFEC4899),
+                                label: 'País',
+                                onTap: () => open(EditCountryScreen(entrepreneur: entrepreneur)),
+                                value: entrepreneur.country == null
+                                    ? 'Agregar país'
+                                    : [?countryFlag(entrepreneur.country), entrepreneur.country!].join('  '),
+                                isEmpty: entrepreneur.country == null,
+                              ),
+                              _InfoTile(
+                                icon: Icons.map_outlined,
+                                color: const Color(0xFF16A34A),
+                                label: 'Ciudad',
+                                onTap: () => open(EditTextFieldScreen.city(entrepreneur)),
+                                value: entrepreneur.city ?? 'Agregar ciudad',
+                                isEmpty: entrepreneur.city == null,
+                              ),
+                              _InfoTile(
+                                icon: Icons.work_outline_rounded,
+                                color: const Color(0xFFF97316),
+                                label: 'Plan',
+                                onTap: () => open(const PlansScreen()),
+                                value: entrepreneur.planExpiresAt == null
+                                    ? Labels.plan(entrepreneur.plan)
+                                    : '${Labels.plan(entrepreneur.plan)} · hasta ${_shortDate(entrepreneur.planExpiresAt!.toLocal())}',
+                              ),
+                              _InfoTile(
+                                icon: Icons.bar_chart_rounded,
+                                color: const Color(0xFF4F46E5),
                                 label: 'Estado',
-                                onTap: () =>
-                                    comingSoon('Tu cuenta está ${Labels.status(entrepreneur.status).toLowerCase()}'),
+                                onTap: () => open(AccountStatusScreen(entrepreneur: entrepreneur)),
                                 value: Labels.status(entrepreneur.status),
+                                valueWidget: _StatusPill(status: entrepreneur.status, withCheck: true),
                               ),
                             ],
                           ),
@@ -347,33 +276,44 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    Widget roundButton({required IconData icon, required String tooltip, required VoidCallback onPressed}) => Material(
+      color: Colors.white.withValues(alpha: 0.14),
+      shape: const CircleBorder(),
+      child: IconButton(
+        tooltip: tooltip,
+        iconSize: 28,
+        padding: const EdgeInsets.all(14),
+        icon: Icon(icon, color: Colors.white),
+        onPressed: onPressed,
+      ),
+    );
+
     return ClipPath(
       clipper: _CurvedBottomClipper(),
       child: Container(
-        decoration: const BoxDecoration(gradient: AppTheme.brandGradient),
-        padding: EdgeInsets.fromLTRB(4, MediaQuery.paddingOf(context).top + 8, 16, 32),
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF0A2A86), Color(0xFF1250D6), Color(0xFF2F7BFF)],
+          ),
+        ),
+        padding: EdgeInsets.fromLTRB(16, MediaQuery.paddingOf(context).top + 10, 16, 48),
         child: Row(
           children: [
-            IconButton(
-              icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+            roundButton(
+              icon: Icons.arrow_back_rounded,
+              tooltip: 'Volver',
               onPressed: () => Navigator.of(context).pop(),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 18),
             const Expanded(
               child: Text(
                 'Mi perfil',
-                style: TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w800),
+                style: TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w800),
               ),
             ),
-            Material(
-              color: Colors.white.withValues(alpha: 0.16),
-              shape: const CircleBorder(),
-              child: IconButton(
-                tooltip: 'Ajustes',
-                icon: const Icon(Icons.settings_rounded, color: Colors.white),
-                onPressed: onSettings,
-              ),
-            ),
+            roundButton(icon: Icons.settings_rounded, tooltip: 'Ajustes', onPressed: onSettings),
           ],
         ),
       ),
@@ -381,13 +321,17 @@ class _Header extends StatelessWidget {
   }
 }
 
+/// Borde inferior en ola: baja a la izquierda y sube hacia la derecha.
 class _CurvedBottomClipper extends CustomClipper<Path> {
   @override
   Path getClip(Size size) {
+    final w = size.width;
+    final h = size.height;
     return Path()
-      ..lineTo(0, size.height - 20)
-      ..quadraticBezierTo(size.width / 2, size.height + 4, size.width, size.height - 20)
-      ..lineTo(size.width, 0)
+      ..lineTo(0, h - 26)
+      ..cubicTo(w * 0.22, h - 44, w * 0.42, h + 6, w * 0.7, h - 14)
+      ..quadraticBezierTo(w * 0.88, h - 26, w, h - 48)
+      ..lineTo(w, 0)
       ..close();
   }
 
@@ -414,59 +358,66 @@ class _ProfileSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isActive = status == 'ACTIVE';
-    final statusColor = isActive ? const Color(0xFF16A34A) : const Color(0xFFDC2626);
-
     return Row(
       children: [
-        Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(shape: BoxShape.circle, color: AppTheme.primary.withValues(alpha: 0.08)),
-              child: Container(
-                width: 88,
-                height: 88,
+        SizedBox(
+          width: 116,
+          height: 116,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              // Anillo azul con brillo alrededor de la foto.
+              Container(
+                width: 112,
+                height: 112,
+                padding: const EdgeInsets.all(5),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: const LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [Color(0xFF3D8BFF), Color(0xFF0D47C9)],
+                    colors: [Color(0xFF9CC4FF), Color(0xFF3D8BFF)],
                   ),
                   boxShadow: [
-                    BoxShadow(
-                      color: AppTheme.primary.withValues(alpha: 0.3),
-                      blurRadius: 14,
-                      offset: const Offset(0, 6),
-                    ),
+                    BoxShadow(color: AppTheme.primary.withValues(alpha: 0.35), blurRadius: 22, spreadRadius: 2),
                   ],
                 ),
-                child: BusinessLogo(
-                  logoUrl: logoUrl,
-                  fallback: const Icon(Icons.person_rounded, color: Colors.white, size: 52),
-                ),
-              ),
-            ),
-            if (onChangePhoto != null)
-              Positioned(
-                right: 2,
-                bottom: 2,
-                child: Material(
-                  color: AppTheme.primary,
-                  shape: const CircleBorder(side: BorderSide(color: Colors.white, width: 3)),
-                  child: InkWell(
-                    customBorder: const CircleBorder(),
-                    onTap: onChangePhoto,
-                    child: const Padding(
-                      padding: EdgeInsets.all(7),
-                      child: Icon(Icons.photo_camera_rounded, color: Colors.white, size: 18),
+                child: Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 4),
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFF3D8BFF), Color(0xFF0D47C9)],
                     ),
+                  ),
+                  child: BusinessLogo(
+                    logoUrl: logoUrl,
+                    fallback: const Icon(Icons.person_rounded, color: Colors.white, size: 60),
                   ),
                 ),
               ),
-          ],
+              if (onChangePhoto != null)
+                Positioned(
+                  right: 4,
+                  bottom: 4,
+                  child: Material(
+                    color: AppTheme.primary,
+                    shape: const CircleBorder(side: BorderSide(color: Colors.white, width: 3)),
+                    elevation: 3,
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: onChangePhoto,
+                      child: const Padding(
+                        padding: EdgeInsets.all(9),
+                        child: Icon(Icons.photo_camera_rounded, color: Colors.white, size: 22),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
         const SizedBox(width: 16),
         Expanded(
@@ -477,38 +428,22 @@ class _ProfileSummary extends StatelessWidget {
                 name,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppTheme.textPrimary),
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: AppTheme.textPrimary,
+                  height: 1.2,
+                ),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: 4),
               Text(
                 email,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 15, color: AppTheme.textSecondary),
+                style: const TextStyle(fontSize: 15, color: Color(0xFF3B5BA9)),
               ),
-              const SizedBox(height: 10),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                decoration: BoxDecoration(
-                  color: statusColor.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      Labels.status(status),
-                      style: TextStyle(color: statusColor, fontWeight: FontWeight.w700, fontSize: 13),
-                    ),
-                  ],
-                ),
-              ),
+              const SizedBox(height: 12),
+              _StatusPill(status: status),
             ],
           ),
         ),
@@ -517,6 +452,46 @@ class _ProfileSummary extends StatelessWidget {
   }
 }
 
+/// Píldora verde (o roja) con el estado de la cuenta.
+class _StatusPill extends StatelessWidget {
+  final String status;
+  final bool withCheck;
+
+  const _StatusPill({required this.status, this.withCheck = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final active = status == 'ACTIVE';
+    final color = active ? const Color(0xFF15803D) : const Color(0xFFDC2626);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      decoration: BoxDecoration(
+        color: (active ? const Color(0xFF22C55E) : color).withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (withCheck)
+            Icon(active ? Icons.check_circle_rounded : Icons.cancel_rounded, color: color, size: 20)
+          else
+            Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
+          const SizedBox(width: 8),
+          Text(
+            Labels.status(status),
+            style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 16),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Lista de datos: cada uno en su propia tarjeta blanca.
 class _InfoCard extends StatelessWidget {
   final List<Widget> children;
 
@@ -524,26 +499,22 @@ class _InfoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(color: AppTheme.navy.withValues(alpha: 0.06), blurRadius: 18, offset: const Offset(0, 6)),
-        ],
-      ),
-      child: Material(
-        type: MaterialType.transparency,
-        child: Column(
-          children: [
-            for (var i = 0; i < children.length; i++) ...[
-              if (i > 0) const Divider(height: 1, indent: 16, endIndent: 16, color: Color(0xFFE6ECF5)),
-              children[i],
-            ],
-          ],
-        ),
-      ),
+    return Column(
+      children: [
+        for (final child in children)
+          Container(
+            margin: const EdgeInsets.only(bottom: 14),
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.96),
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(color: AppTheme.navy.withValues(alpha: 0.07), blurRadius: 18, offset: const Offset(0, 6)),
+              ],
+            ),
+            child: Material(type: MaterialType.transparency, child: child),
+          ),
+      ],
     );
   }
 }
@@ -555,12 +526,20 @@ class _InfoTile extends StatelessWidget {
   final String value;
   final VoidCallback onTap;
 
+  /// Reemplaza al texto del valor (p. ej. la píldora de "Estado").
+  final Widget? valueWidget;
+
+  /// El dato no está registrado: [value] es una invitación a agregarlo.
+  final bool isEmpty;
+
   const _InfoTile({
     required this.icon,
     required this.color,
     required this.label,
     required this.value,
     required this.onTap,
+    this.valueWidget,
+    this.isEmpty = false,
   });
 
   @override
@@ -568,32 +547,44 @@ class _InfoTile extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Row(
           children: [
             Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(14)),
-              child: Icon(icon, color: color, size: 26),
+              width: 54,
+              height: 54,
+              decoration: BoxDecoration(color: color.withValues(alpha: 0.13), borderRadius: BorderRadius.circular(18)),
+              child: Icon(icon, color: color, size: 28),
             ),
             const SizedBox(width: 16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(label, style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
-                  const SizedBox(height: 2),
-                  Text(
-                    value,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
-                  ),
+                  Text(label, style: const TextStyle(fontSize: 15, color: Color(0xFF4A5B85))),
+                  const SizedBox(height: 4),
+                  valueWidget ??
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          value,
+                          maxLines: 1,
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                            color: isEmpty ? AppTheme.primary : AppTheme.textPrimary,
+                          ),
+                        ),
+                      ),
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right_rounded, color: AppTheme.textSecondary),
+            Icon(
+              isEmpty ? Icons.add_rounded : Icons.chevron_right_rounded,
+              color: isEmpty ? AppTheme.primary : AppTheme.textPrimary,
+              size: 30,
+            ),
           ],
         ),
       ),
@@ -668,3 +659,5 @@ class _BackgroundWavePainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
+
+String _shortDate(DateTime d) => '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';

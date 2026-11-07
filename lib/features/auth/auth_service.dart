@@ -57,8 +57,46 @@ class AuthService {
     return result;
   }
 
+  /// Google o SMS: canjea el ID token de Firebase por la sesión de la app.
+  /// Devuelve null si es un teléfono nuevo y faltan nombre y correo para crear la cuenta.
+  Future<AuthResult?> firebaseLogin({
+    required String idToken,
+    String? firstName,
+    String? lastName,
+    String? email,
+  }) async {
+    final response = await _apiClient.post(
+      '/app/auth/firebase',
+      data: {
+        'idToken': idToken,
+        if (firstName != null && firstName.isNotEmpty) 'firstName': firstName,
+        if (lastName != null) 'lastName': lastName,
+        if (email != null && email.isNotEmpty) 'email': email,
+      },
+    );
+    final data = response['data'] as Map<String, dynamic>;
+    if (data['needsProfile'] == true) return null;
+    final result = AuthResult.fromJson(data);
+    await _tokenStorage.saveTokens(accessToken: result.accessToken, refreshToken: result.refreshToken);
+    return result;
+  }
+
   Future<Entrepreneur> me() async {
     final response = await _apiClient.get('/app/auth/me');
+    return Entrepreneur.fromJson(response['data'] as Map<String, dynamic>);
+  }
+
+  /// Actualiza los datos personales. Un texto vacío borra un dato opcional (teléfono, país, ciudad).
+  Future<Entrepreneur> updateProfile(Map<String, String> fields) async {
+    final response = await _apiClient.patch('/app/auth/me', data: fields);
+    return Entrepreneur.fromJson(response['data'] as Map<String, dynamic>);
+  }
+
+  Future<Entrepreneur> changeEmail({required String newEmail, required String password}) async {
+    final response = await _apiClient.post(
+      '/app/auth/change-email',
+      data: {'newEmail': newEmail, 'password': password},
+    );
     return Entrepreneur.fromJson(response['data'] as Map<String, dynamic>);
   }
 

@@ -19,8 +19,8 @@ class ApiClient {
     : dio = Dio(
         BaseOptions(
           baseUrl: ApiConfig.baseUrl,
-          connectTimeout: const Duration(seconds: 15),
-          receiveTimeout: const Duration(seconds: 15),
+          connectTimeout: const Duration(seconds: 20),
+          receiveTimeout: const Duration(seconds: 30),
         ),
       ) {
     dio.interceptors.add(
@@ -79,7 +79,11 @@ class ApiClient {
 
   /// [receiveTimeout] alarga la espera para peticiones lentas (p. ej. las que llaman a la IA).
   Future<Map<String, dynamic>> post(String path, {Object? data, Duration? receiveTimeout}) => _unwrap(
-    dio.post(path, data: data, options: receiveTimeout == null ? null : Options(receiveTimeout: receiveTimeout)),
+    dio.post(
+      path,
+      data: data,
+      options: receiveTimeout == null ? null : Options(receiveTimeout: receiveTimeout),
+    ),
   );
 
   /// Envía bytes crudos (ej. una imagen) con su Content-Type.

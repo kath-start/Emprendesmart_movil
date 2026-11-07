@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/notifications/plan_reminders.dart';
 import '../../core/theme/app_theme.dart';
+import '../../models/entrepreneur.dart';
 import '../auth/auth_provider.dart';
 import 'plan_checkout_screen.dart';
 
@@ -103,6 +105,9 @@ const _plans = [
 ];
 
 /// Planes de EmprendeSmart y sus beneficios. Los planes de pago se cobran por Yape.
+/// Color de cada plan (también lo usa el aviso de vencimiento en Inicio).
+Color planColor(String code) => _plans.firstWhere((plan) => plan.code == code, orElse: () => _plans.first).color;
+
 class PlansScreen extends StatelessWidget {
   const PlansScreen({super.key});
 
@@ -134,7 +139,8 @@ class PlansScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Se lee del perfil para que "Tu plan" cambie apenas se confirma un pago.
-    final currentPlan = context.watch<AuthProvider>().entrepreneur?.plan;
+    final entrepreneur = context.watch<AuthProvider>().entrepreneur;
+    final currentPlan = entrepreneur?.plan;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light,
@@ -149,9 +155,16 @@ class PlansScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   for (final plan in _plans) ...[
-                    _PlanCard(plan: plan, isCurrent: plan.code == currentPlan, onChoose: () => _choose(context, plan)),
+                    _PlanCard(
+                      plan: plan,
+                      isCurrent: plan.code == currentPlan,
+                      // Un plan pagado vence a los 30 días: el actual se puede renovar.
+                      expiresAt: plan.code == currentPlan ? entrepreneur?.planExpiresAt : null,
+                      onChoose: () => _choose(context, plan),
+                    ),
                     const SizedBox(height: 16),
                   ],
+                  _RemindersCard(entrepreneur: entrepreneur),
                 ],
               ),
             ),
@@ -223,9 +236,10 @@ class _CurvedBottomClipper extends CustomClipper<Path> {
 class _PlanCard extends StatelessWidget {
   final _Plan plan;
   final bool isCurrent;
+  final DateTime? expiresAt;
   final VoidCallback onChoose;
 
-  const _PlanCard({required this.plan, required this.isCurrent, required this.onChoose});
+  const _PlanCard({required this.plan, required this.isCurrent, required this.onChoose, this.expiresAt});
 
   @override
   Widget build(BuildContext context) {
@@ -308,7 +322,16 @@ class _PlanCard extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 16),
-          if (isCurrent)
+          if (isCurrent && expiresAt != null) ...[
+            _ExpiryLine(expiresAt: expiresAt!.toLocal(), color: plan.color),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(backgroundColor: plan.color),
+              onPressed: onChoose,
+              icon: const Icon(Icons.qr_code_2_rounded),
+              label: const Text('Renovar con Yape'),
+            ),
+          ] else if (isCurrent)
             OutlinedButton(onPressed: null, child: const Text('Plan actual'))
           else
             FilledButton(
@@ -316,6 +339,101 @@ class _PlanCard extends StatelessWidget {
               onPressed: onChoose,
               child: Text('Elegir ${plan.name}'),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ExpiryLine extends StatelessWidget {
+  final DateTime expiresAt;
+  final Color color;
+
+  const _ExpiryLine({required this.expiresAt, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final days = DateUtils.dateOnly(expiresAt).difference(DateUtils.dateOnly(DateTime.now())).inDays;
+    final date =
+        '${expiresAt.day.toString().padLeft(2, '0')}/${expiresAt.month.toString().padLeft(2, '0')}/${expiresAt.year}';
+    final (String text, Color tone) = switch (days) {
+      < 0 => ('Venció el $date', const Color(0xFFDC2626)),
+      0 => ('Vence hoy ($date)', const Color(0xFFDC2626)),
+      <= 5 => ('Vence el $date · faltan $days ${days == 1 ? 'día' : 'días'}', const Color(0xFFD97706)),
+      _ => ('Pagado hasta el $date', color),
+    };
+    return Row(
+      children: [
+        Icon(Icons.event_rounded, size: 20, color: tone),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(color: tone, fontWeight: FontWeight.w700),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Interruptor para activar o apagar los recordatorios de pago en el teléfono.
+class _RemindersCard extends StatefulWidget {
+  final Entrepreneur? entrepreneur;
+
+  const _RemindersCard({required this.entrepreneur});
+
+  @override
+  State<_RemindersCard> createState() => _RemindersCardState();
+}
+
+class _RemindersCardState extends State<_RemindersCard> {
+  bool? _enabled;
+
+  @override
+  void initState() {
+    super.initState();
+    PlanReminders.isEnabled().then((value) {
+      if (mounted) setState(() => _enabled = value);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final free = widget.entrepreneur?.isFreePlan ?? true;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+      child: Row(
+        children: [
+          const Icon(Icons.notifications_active_outlined, color: AppTheme.primary),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Recordatorios de pago',
+                  style: TextStyle(fontWeight: FontWeight.w800, color: AppTheme.textPrimary, fontSize: 16),
+                ),
+                Text(
+                  free
+                      ? 'Te recordamos cada semana empezar un plan.'
+                      : 'Te avisamos 3 días antes, un día antes y el día que vence tu plan.',
+                  style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13, height: 1.3),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            value: _enabled ?? true,
+            onChanged: _enabled == null
+                ? null
+                : (value) {
+                    setState(() => _enabled = value);
+                    PlanReminders.setEnabled(value, widget.entrepreneur);
+                  },
+          ),
         ],
       ),
     );

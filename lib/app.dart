@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'core/network/api_client.dart';
+import 'core/notifications/notification_service.dart';
 import 'core/storage/token_storage.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/auth_provider.dart';
@@ -15,6 +16,7 @@ import 'features/products/product_provider.dart';
 import 'features/products/product_service.dart';
 import 'features/sales/sale_provider.dart';
 import 'features/sales/sale_service.dart';
+import 'features/yape/yape_provider.dart';
 
 class App extends StatelessWidget {
   const App({super.key});
@@ -38,9 +40,12 @@ class App extends StatelessWidget {
         ChangeNotifierProvider<BusinessProvider>(create: (_) => BusinessProvider(BusinessService(apiClient))),
         ChangeNotifierProvider<ProductProvider>(create: (_) => ProductProvider(ProductService(apiClient))),
         ChangeNotifierProvider<SaleProvider>(create: (_) => SaleProvider(SaleService(apiClient))),
+        // Empieza a leer los Yapes al abrir la app, sin esperar a que se abra su pantalla.
+        ChangeNotifierProvider<YapeProvider>(create: (_) => YapeProvider()..start(), lazy: false),
       ],
       child: MaterialApp(
         title: 'EmprendeSmart',
+        navigatorKey: NotificationService.navigatorKey,
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light,
         home: const AuthGate(),

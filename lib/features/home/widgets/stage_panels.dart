@@ -232,7 +232,7 @@ class SalesGoalCard extends StatelessWidget {
         ],
       ),
     );
-    controller.dispose();
+    // Sin dispose(): el diálogo aún usa el controller durante su animación de cierre (se libera solo).
     if (result == false) {
       onSave(null);
     } else if (result is double && result > 0) {
@@ -556,7 +556,7 @@ class _ProductRow extends StatelessWidget {
                   style: const TextStyle(fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
                 ),
                 Text(
-                  caption ?? '${product.units} ${product.units == 1 ? 'unidad' : 'unidades'} vendidas',
+                  caption ?? '${product.units} ${product.units == 1 ? 'unidad vendida' : 'unidades vendidas'}',
                   maxLines: 2,
                   style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
                 ),

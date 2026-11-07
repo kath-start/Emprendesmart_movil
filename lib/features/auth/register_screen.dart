@@ -5,6 +5,7 @@ import '../../core/network/api_exception.dart';
 import '../../core/theme/app_theme.dart';
 import 'auth_provider.dart';
 import 'widgets/auth_layout.dart';
+import 'widgets/social_sign_in_buttons.dart';
 
 final _whitespace = RegExp(r'\s+');
 
@@ -50,10 +51,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     } on ApiException catch (error) {
       setState(() => _errorMessage = error.message);
     }
-  }
-
-  void _showComingSoon(String feature) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$feature estará disponible próximamente.')));
   }
 
   @override
@@ -151,10 +148,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
             const SizedBox(height: 20),
             const AuthOrDivider(),
             const SizedBox(height: 20),
-            OutlinedButton.icon(
-              onPressed: isLoading ? null : () => _showComingSoon('El acceso con Google'),
-              icon: const GoogleMark(),
-              label: const Text('Continuar con Google'),
+            SocialSignInButtons(
+              onSignedIn: () {
+                if (mounted) Navigator.of(context).pop();
+              },
             ),
             const SizedBox(height: 20),
             const Text(

@@ -86,10 +86,7 @@ class _ConfirmDialog extends StatelessWidget {
               const SizedBox(height: 14),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFF4E5),
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                decoration: BoxDecoration(color: const Color(0xFFFFF4E5), borderRadius: BorderRadius.circular(12)),
                 child: Row(
                   children: [
                     const Icon(Icons.info_outline_rounded, size: 18, color: Color(0xFFB45309)),

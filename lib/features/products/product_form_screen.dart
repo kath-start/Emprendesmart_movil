@@ -35,8 +35,8 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   late final _categoryController = TextEditingController(text: widget.product?.category);
   late final _unitController = TextEditingController(text: widget.product?.unit);
   late final _skuController = TextEditingController(text: widget.product?.sku ?? widget.initialSku);
-  late final _priceController = TextEditingController(text: widget.product?.price.toString());
-  late final _costController = TextEditingController(text: widget.product?.cost?.toString());
+  late final _priceController = TextEditingController(text: widget.product?.price.toStringAsFixed(2));
+  late final _costController = TextEditingController(text: widget.product?.cost?.toStringAsFixed(2));
   late final _stockController = TextEditingController(text: widget.product == null ? '0' : null);
   late final _lowStockController = TextEditingController(text: (widget.product?.lowStockThreshold ?? 5).toString());
   late String _status = widget.product?.status ?? _statuses.first;
@@ -53,7 +53,20 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   bool _imageMissing = false;
   bool _submitAttempted = false;
 
+  /// Valores puestos por el último escaneo; si el usuario no los cambió, otro escaneo los reemplaza.
+  String? _autoName;
+  String? _autoCategory;
+  String? _autoImageUrl;
+
   bool get _hasImage => _pickedImage != null || (_imageUrl?.isNotEmpty ?? false);
+
+  /// Vacío o todavía con el dato del escaneo anterior (no lo escribió el usuario).
+  bool _isReplaceable(TextEditingController controller, String? autoValue) {
+    final text = controller.text.trim();
+    return text.isEmpty || (autoValue != null && text == autoValue);
+  }
+
+  bool get _imageReplaceable => !_hasImage || (_pickedImage == null && _imageUrl == _autoImageUrl);
 
   @override
   void initState() {
@@ -143,7 +156,8 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
     await _fillFromBarcode(code);
   }
 
-  /// Autocompleta nombre, categoría e imagen con los datos públicos del empaque, sin pisar lo ya puesto.
+  /// Autocompleta nombre, categoría e imagen con los datos públicos del empaque, sin pisar lo que
+  /// escribió el usuario (lo que llenó un escaneo anterior sí se reemplaza).
   /// Con [forceImage] reemplaza la imagen actual por la encontrada en internet.
   Future<void> _fillFromBarcode(String code, {bool forceImage = false}) async {
     final messenger = ScaffoldMessenger.of(context);
@@ -153,9 +167,9 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
       return;
     }
     if (!forceImage &&
-        _hasImage &&
-        _nameController.text.trim().isNotEmpty &&
-        _categoryController.text.trim().isNotEmpty) {
+        !_imageReplaceable &&
+        !_isReplaceable(_nameController, _autoName) &&
+        !_isReplaceable(_categoryController, _autoCategory)) {
       return;
     }
 
@@ -165,22 +179,39 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
     setState(() => _isLookingUp = false);
 
     if (info == null) {
+      // Los datos del escaneo anterior ya no corresponden a este código.
+      setState(() {
+        if (_autoName != null && _isReplaceable(_nameController, _autoName)) _nameController.clear();
+        if (_autoCategory != null && _isReplaceable(_categoryController, _autoCategory)) _categoryController.clear();
+        if (_autoImageUrl != null && _imageReplaceable) _imageUrl = null;
+        _autoName = _autoCategory = _autoImageUrl = null;
+      });
       messenger.showSnackBar(
         const SnackBar(content: Text('No encontramos este producto en internet. Completa los datos y toma una foto.')),
       );
       return;
     }
-    if (info.imageUrl != null && (forceImage || !_hasImage)) {
-      setState(() {
-        _imageUrl = info.imageUrl;
-        _pickedImage = null;
-        _imageMissing = false;
-      });
-    }
-    if (_nameController.text.trim().isEmpty) _nameController.text = info.suggestedName;
-    if (_categoryController.text.trim().isEmpty && info.category != null && info.category!.length <= 80) {
-      _categoryController.text = info.category!;
-    }
+    final category = info.category != null && info.category!.length <= 80 ? info.category : null;
+    setState(() {
+      if (forceImage || _imageReplaceable) {
+        if (info.imageUrl != null) {
+          _imageUrl = info.imageUrl;
+          _pickedImage = null;
+          _imageMissing = false;
+        } else if (_autoImageUrl != null && _imageUrl == _autoImageUrl) {
+          _imageUrl = null;
+        }
+        _autoImageUrl = info.imageUrl;
+      }
+      if (_isReplaceable(_nameController, _autoName)) {
+        _nameController.text = info.suggestedName;
+        _autoName = info.suggestedName;
+      }
+      if (_isReplaceable(_categoryController, _autoCategory)) {
+        _categoryController.text = category ?? '';
+        _autoCategory = category;
+      }
+    });
     // Si ya se intentó guardar, revalida para quitar los "Requerido" de los campos que se llenaron solos.
     if (_submitAttempted) _formKey.currentState?.validate();
     messenger.showSnackBar(

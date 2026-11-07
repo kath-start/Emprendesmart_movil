@@ -190,10 +190,7 @@ class _ManualCodeDialogState extends State<_ManualCodeDialog> {
         controller: _textController,
         autofocus: true,
         keyboardType: TextInputType.number,
-        decoration: const InputDecoration(
-          labelText: 'Código de barras',
-          prefixIcon: Icon(Icons.qr_code_rounded),
-        ),
+        decoration: const InputDecoration(labelText: 'Código de barras', prefixIcon: Icon(Icons.qr_code_rounded)),
         onSubmitted: (_) => _accept(),
       ),
       actions: [

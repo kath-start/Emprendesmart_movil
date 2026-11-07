@@ -436,8 +436,8 @@ class _MessageBubble extends StatelessWidget {
           bottomRight: Radius.circular(isUser ? 6 : 20),
         ),
       ),
-      child: Text(
-        message.content,
+      child: Text.rich(
+        isUser ? TextSpan(text: message.content) : _formatAssistantText(message.content),
         style: TextStyle(color: isUser ? Colors.white : AppTheme.textPrimary, fontSize: 15, height: 1.4),
       ),
     );
@@ -627,4 +627,28 @@ class _LimitReachedCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Limpia la respuesta de la IA: convierte **negritas** en negrita real, quita
+/// títulos con # y muestra los montos en soles (S/) aunque el modelo use "$".
+TextSpan _formatAssistantText(String raw) {
+  var text = raw
+      .replaceAll(RegExp(r'^#{1,6}\s*', multiLine: true), '')
+      .replaceAllMapped(RegExp(r'\$\s?(\d)'), (m) => 'S/ ${m[1]}')
+      .replaceAll(RegExp(r'\bUSD\s?', caseSensitive: false), 'S/ ');
+  final spans = <TextSpan>[];
+  final bold = RegExp(r'\*\*(.+?)\*\*|__(.+?)__');
+  var last = 0;
+  for (final match in bold.allMatches(text)) {
+    if (match.start > last) spans.add(TextSpan(text: text.substring(last, match.start)));
+    spans.add(
+      TextSpan(
+        text: match[1] ?? match[2],
+        style: const TextStyle(fontWeight: FontWeight.w700),
+      ),
+    );
+    last = match.end;
+  }
+  if (last < text.length) spans.add(TextSpan(text: text.substring(last)));
+  return TextSpan(children: spans);
 }

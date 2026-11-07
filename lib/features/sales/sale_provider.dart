@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 
-import '../../models/alert.dart';
 import '../../models/sale.dart';
 import 'sale_service.dart';
 
@@ -25,11 +24,16 @@ class SaleProvider extends ChangeNotifier {
 
   Future<Sale> getSaleById(String businessId, String saleId) => _saleService.getById(businessId, saleId);
 
-  Future<List<Alert>> createSale(String businessId, {required List<Map<String, dynamic>> items, String? notes}) async {
-    final result = await _saleService.create(businessId, items: items, notes: notes);
+  Future<CreateSaleResult> createSale(
+    String businessId, {
+    required List<Map<String, dynamic>> items,
+    String? notes,
+    String? paymentMethod,
+  }) async {
+    final result = await _saleService.create(businessId, items: items, notes: notes, paymentMethod: paymentMethod);
     sales = [result.sale, ...sales];
     notifyListeners();
-    return result.alerts;
+    return result;
   }
 
   void reset() {

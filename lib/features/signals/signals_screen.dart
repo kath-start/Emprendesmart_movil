@@ -138,7 +138,7 @@ class _SignalsScreenState extends State<SignalsScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
                 child: _SegmentedTabs(
                   selected: _tab,
-                  alertsCount: alerts?.length ?? 0,
+                  alertsCount: alerts?.where((a) => a.status != 'RESOLVED').length ?? 0,
                   recommendationsCount: recommendations?.length ?? 0,
                   onChanged: (tab) => setState(() => _tab = tab),
                 ),

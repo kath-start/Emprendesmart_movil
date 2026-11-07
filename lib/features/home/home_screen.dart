@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/network/api_exception.dart';
+import '../../core/notifications/notification_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/labels.dart';
 import '../../core/widgets/confirm_dialog.dart';
@@ -15,12 +16,15 @@ import '../auth/auth_provider.dart';
 import '../businesses/business_provider.dart';
 import '../businesses/businesses_screen.dart';
 import '../businesses/widgets/business_logo.dart';
+import '../plans/plan_expiry_banner.dart';
 import '../products/products_screen.dart';
 import '../sales/new_sale_screen.dart';
 import '../sales/sale_service.dart';
 import '../sales/sales_screen.dart';
 import '../signals/signal_service.dart';
 import '../signals/signals_screen.dart';
+import '../yape/yape_payments_screen.dart';
+import '../yape/yape_provider.dart';
 import '../idea/idea_dashboard.dart';
 import 'more_screen.dart';
 import 'widgets/sales_overview.dart';
@@ -45,6 +49,13 @@ class _HomeScreenState extends State<HomeScreen> {
   final Set<int> _visitedTabs = {_tabHome};
   // "Más" tiene su propio Navigator para que "Mi perfil" se abra sin ocultar la barra inferior.
   final _moreNavigatorKey = GlobalKey<NavigatorState>();
+
+  @override
+  void initState() {
+    super.initState();
+    // Si la app se abrió tocando un recordatorio de pago, ahora que hay inicio se abre Planes.
+    WidgetsBinding.instance.addPostFrameCallback((_) => NotificationService.handleLaunchPayload());
+  }
 
   void _goTo(int tab) {
     if (tab == _tabMore && _tab == _tabMore) {
@@ -265,6 +276,7 @@ class _DashboardState extends State<_Dashboard> {
                     onBusinessTap: () => _push(const BusinessesScreen()),
                   ),
                   const SizedBox(height: 16),
+                  const PlanExpiryBanner(),
                   // Un negocio que todavía es idea no vende: ve su plan de lanzamiento en vez de ventas.
                   if (business.isIdea)
                     IdeaDashboard(business: business, onOpenProducts: () => widget.onOpenTab(_tabProducts))
@@ -294,6 +306,17 @@ class _DashboardState extends State<_Dashboard> {
                       title: 'Registrar venta',
                       subtitle: 'Realiza ventas de forma rápida y sencilla.',
                       onTap: () => _push(NewSaleScreen(businessId: business.id)),
+                    ),
+                    _ActionCard(
+                      icon: Icons.qr_code_2_rounded,
+                      colors: const [Color(0xFFA23CB4), Color(0xFF742284)],
+                      title: 'Cobros Yape y Plin',
+                      subtitle: switch (context.watch<YapeProvider>().pendingCount) {
+                        0 => 'Tus Yapes se registran solos. Asígnales los productos.',
+                        1 => 'Tienes 1 Yape por asignar a una venta.',
+                        final n => 'Tienes $n Yapes por asignar a una venta.',
+                      },
+                      onTap: () => _push(YapePaymentsScreen(businessId: business.id)),
                     ),
                     _ActionCard(
                       icon: Icons.bar_chart_rounded,

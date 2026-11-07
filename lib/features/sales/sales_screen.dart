@@ -399,7 +399,11 @@ class _SummaryRow extends StatelessWidget {
           child: Row(
             children: [
               Expanded(
-                child: _SummaryItem(icon: Icons.inventory_2_outlined, value: '$units', label: 'productos vendidos'),
+                child: _SummaryItem(
+                  icon: Icons.inventory_2_outlined,
+                  value: '$units',
+                  label: units == 1 ? 'unidad vendida' : 'unidades vendidas',
+                ),
               ),
               const VerticalDivider(width: 20, color: AppTheme.border),
               Expanded(
@@ -445,7 +449,7 @@ class _SummaryItem extends StatelessWidget {
               ),
               Text(
                 label,
-                maxLines: 1,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
               ),

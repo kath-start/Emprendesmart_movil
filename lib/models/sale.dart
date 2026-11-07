@@ -41,6 +41,9 @@ class Sale {
   final String? notes;
   final List<SaleItem> items;
 
+  /// efectivo, yape, plin o tarjeta (null en ventas antiguas).
+  final String? paymentMethod;
+
   /// Quién registró la venta (el dueño o alguien de su equipo).
   final String? sellerName;
 
@@ -51,6 +54,7 @@ class Sale {
     required this.total,
     this.notes,
     required this.items,
+    this.paymentMethod,
     this.sellerName,
   });
 
@@ -63,6 +67,7 @@ class Sale {
       soldAt: DateTime.parse(json['soldAt'] as String),
       total: parseNum(json['total']).toDouble(),
       notes: json['notes'] as String?,
+      paymentMethod: json['paymentMethod'] as String?,
       items: rawItems.map((item) => SaleItem.fromJson(item as Map<String, dynamic>)).toList(),
       sellerName: seller == null ? null : '${seller['firstName']} ${seller['lastName']}'.trim(),
     );

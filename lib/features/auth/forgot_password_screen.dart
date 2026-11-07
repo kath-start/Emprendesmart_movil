@@ -127,7 +127,11 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     )
                   : const Row(
                       mainAxisAlignment: MainAxisAlignment.center,
-                      children: [Text('Cambiar contraseña'), SizedBox(width: 8), Icon(Icons.arrow_forward_rounded, size: 20)],
+                      children: [
+                        Text('Cambiar contraseña'),
+                        SizedBox(width: 8),
+                        Icon(Icons.arrow_forward_rounded, size: 20),
+                      ],
                     ),
             ),
             const SizedBox(height: 12),

@@ -14,6 +14,7 @@ import '../businesses/create_business_screen.dart';
 import '../businesses/widgets/business_logo.dart';
 import '../signals/signals_screen.dart';
 import '../team/team_screen.dart';
+import '../yape/yape_payments_screen.dart';
 
 /// Pestaña "Más": cuenta, negocio y accesos secundarios.
 class MoreScreen extends StatelessWidget {
@@ -85,6 +86,14 @@ class MoreScreen extends StatelessWidget {
                       : business.name,
                   onTap: () => push(const BusinessesScreen()),
                 ),
+                if (business != null && !business.isIdea)
+                  _Option(
+                    icon: Icons.qr_code_2_rounded,
+                    color: const Color(0xFF742284),
+                    title: 'Cobros Yape y Plin',
+                    subtitle: 'Lee tus Yapes y Plines y conviértelos en ventas',
+                    onTap: () => push(YapePaymentsScreen(businessId: business.id)),
+                  ),
                 if (business != null && business.isOwner) ...[
                   _Option(
                     icon: Icons.edit_rounded,
